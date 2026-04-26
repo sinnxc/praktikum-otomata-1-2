@@ -15,9 +15,7 @@ import re
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox
 
-# ============================================================
 # Definisi token
-# ============================================================
 
 # Reserved words untuk beberapa bahasa populer
 RESERVED_WORDS = {
@@ -56,7 +54,7 @@ SYMBOLS = {
     # Multi-character
     '==', '!=', '<=', '>=', '&&', '||', '++', '--', '+=', '-=',
     '*=', '/=', '%=', '**', '//', '<<', '>>', '->', '=>', '::',
-    '...', '??', '?.',
+    '...', '??', '?.', '/*', '*/', '/**'
 }
 
 MULTI_CHAR_SYMBOLS = sorted(
@@ -72,9 +70,19 @@ NUMBER_PATTERN = re.compile(
 IDENTIFIER_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*')
 
 
-# ============================================================
+# Fungsi matematika umum yang sering muncul di C/C++/Java/Python/JavaScript
+MATH_FUNCTIONS = {
+    "abs", "fabs", "sqrt", "cbrt", "pow", "exp",
+    "log", "log10", "log2", "ln",
+    "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+    "sinh", "cosh", "tanh",
+    "ceil", "floor", "round", "trunc",
+    "min", "max", "fmod", "mod", "remainder",
+    "hypot", "degrees", "radians",
+}
+
+
 # Tokenizer
-# ============================================================
 
 class Token:
     """Representasi sebuah token."""
@@ -84,6 +92,7 @@ class Token:
     NUMBER     = "Angka (Literal)"
     STRING_LIT = "String Literal"
     MATH_EXPR  = "Kalimat Matematika"
+    MATH_FUNC  = "Fungsi Matematika"
     COMMENT    = "Komentar"
     UNKNOWN    = "Tidak Dikenal"
 
@@ -105,23 +114,58 @@ def tokenize(source: str) -> list[Token]:
     tokens: list[Token] = []
     lines = source.split('\n')
 
+    in_block_comment = False
+    block_comment_text = ""
+    block_start_line = 0
+    block_start_col = 0
+
     for line_num, line in enumerate(lines, start=1):
         i = 0
         while i < len(line):
             ch = line[i]
 
-            # --- Lewati whitespace ---
+            # Komentar multi-baris: /* ... */ atau /** ... */
+            if in_block_comment:
+                end_pos = line.find('*/', i)
+                if end_pos == -1:
+                    block_comment_text += line[i:] + '\n'
+                    break
+                else:
+                    block_comment_text += line[i:end_pos + 2]
+                    tokens.append(Token(block_comment_text, Token.COMMENT,
+                                        block_start_line, block_start_col))
+                    in_block_comment = False
+                    block_comment_text = ""
+                    i = end_pos + 2
+                    continue
+
+            # Lewati whitespace
             if ch in (' ', '\t', '\r'):
                 i += 1
                 continue
 
-            # --- Komentar satu baris (// atau #) ---
+            # Awal komentar multi-baris: /* ... */ atau /** ... */
+            if ch == '/' and i + 1 < len(line) and line[i + 1] == '*':
+                end_pos = line.find('*/', i + 2)
+                if end_pos == -1:
+                    in_block_comment = True
+                    block_start_line = line_num
+                    block_start_col = i + 1
+                    block_comment_text = line[i:] + '\n'
+                    break
+                else:
+                    comment = line[i:end_pos + 2]
+                    tokens.append(Token(comment, Token.COMMENT, line_num, i + 1))
+                    i = end_pos + 2
+                    continue
+
+            # Komentar satu baris (// atau #)
             if ch == '#' or (ch == '/' and i + 1 < len(line) and line[i + 1] == '/'):
                 comment = line[i:]
                 tokens.append(Token(comment, Token.COMMENT, line_num, i + 1))
                 break  # sisa baris adalah komentar
 
-            # --- String literal ---
+            # String literal
             if ch in ('"', "'", '`'):
                 quote = ch
                 j = i + 1
@@ -140,7 +184,7 @@ def tokenize(source: str) -> list[Token]:
                 i = j
                 continue
 
-            # --- Angka ---
+            # Angka
             if ch.isdigit() or (ch == '.' and i + 1 < len(line) and line[i + 1].isdigit()):
                 m = NUMBER_PATTERN.match(line[i:])
                 if m:
@@ -149,7 +193,7 @@ def tokenize(source: str) -> list[Token]:
                     i += len(num)
                     continue
 
-            # --- Multi-character symbols ---
+            # Multi-character symbols
             found_multi = False
             for sym in MULTI_CHAR_SYMBOLS:
                 if line[i:i + len(sym)] == sym:
@@ -160,45 +204,54 @@ def tokenize(source: str) -> list[Token]:
             if found_multi:
                 continue
 
-            # --- Single-character symbols ---
+            # Single-character symbols
             if ch in SYMBOLS:
                 tokens.append(Token(ch, Token.SYMBOL, line_num, i + 1))
                 i += 1
                 continue
 
-            # --- Identifier / Reserved word ---
+            # Identifier / Reserved word
             m = IDENTIFIER_PATTERN.match(line[i:])
             if m:
                 word = m.group(0)
                 if word in RESERVED_WORDS:
                     cat = Token.RESERVED
+                elif word in MATH_FUNCTIONS:
+                    cat = Token.MATH_FUNC
                 else:
                     cat = Token.VARIABLE
                 tokens.append(Token(word, cat, line_num, i + 1))
                 i += len(word)
                 continue
 
-            # --- Karakter tidak dikenal ---
+            # Karakter tidak dikenal
             tokens.append(Token(ch, Token.UNKNOWN, line_num, i + 1))
             i += 1
 
-    # --- Identifikasi kalimat matematika ---
+    # Jika komentar multi-baris tidak ditutup, tetap masukkan sebagai komentar
+    if in_block_comment:
+        tokens.append(Token(block_comment_text.rstrip('\n'), Token.COMMENT,
+                            block_start_line, block_start_col))
+
+    # Identifikasi kalimat matematika
     tokens = identify_math_expressions(tokens)
     return tokens
-
 
 def identify_math_expressions(tokens: list[Token]) -> list[Token]:
     """
     Mengidentifikasi rangkaian token yang membentuk kalimat matematika
     (assignment/persamaan, pemanggilan fungsi matematika, dsb).
 
-    Strategi: jika sebuah baris mengandung operator aritmetika/assignment
-    yang menghubungkan angka dan/atau variabel, maka rangkaian tersebut
-    dikelompokkan sebagai 'Kalimat Matematika'.
+    Strategi: Mencari sequence/rangkaian token yang contiguous (bersebelahan)
+    yang terdiri dari Variabel, Angka, Fungsi Matematika, dan Simbol Matematika/Kurung/Koma. Jika
+    sequence tersebut memiliki minimal satu operator matematika, maka ia
+    digabung menjadi satu token 'Kalimat Matematika'.
     """
     math_operators = {'+', '-', '*', '/', '%', '**', '//', '=', '==',
                       '!=', '<=', '>=', '<', '>', '+=', '-=', '*=', '/=',
                       '%=', '++', '--'}
+    # Hanya izinkan kurung biasa untuk menghindari menelan property object (.) atau array ([])
+    allowed_symbols = math_operators | {'(', ')', ','}
 
     # Kelompokkan token per baris
     line_groups: dict[int, list[Token]] = {}
@@ -208,56 +261,46 @@ def identify_math_expressions(tokens: list[Token]) -> list[Token]:
     result = []
     for line_num in sorted(line_groups.keys()):
         group = line_groups[line_num]
+        current_seq = []
 
-        # Cek apakah baris ini mengandung ekspresi matematika
-        has_math_op = any(
-            t.category == Token.SYMBOL and t.value in math_operators
-            for t in group
-        )
-        has_operand = any(
-            t.category in (Token.NUMBER, Token.VARIABLE)
-            for t in group
-        )
+        def flush_seq():
+            if not current_seq:
+                return
+            
+            # Buang operator gantung di akhir (misal 'arr =' yang terputus oleh '[')
+            trailing_tokens = []
+            while current_seq and current_seq[-1].category == Token.SYMBOL and current_seq[-1].value in math_operators:
+                if current_seq[-1].value in ('++', '--'):
+                    break
+                trailing_tokens.insert(0, current_seq.pop())
 
-        if has_math_op and has_operand:
-            # Tandai token yang merupakan bagian dari ekspresi matematika
-            # (operand dan operator, termasuk tanda kurung)
-            math_parts = []
-            for t in group:
-                if t.category in (Token.NUMBER, Token.VARIABLE):
-                    math_parts.append(t)
-                elif t.category == Token.SYMBOL and t.value in (
-                    math_operators | {'(', ')', '[', ']'}
-                ):
-                    math_parts.append(t)
-                elif t.category == Token.RESERVED:
-                    # tetap reserved
-                    pass
+            has_op = any(t.category == Token.SYMBOL and t.value in math_operators for t in current_seq)
+            has_operand = any(t.category in (Token.NUMBER, Token.VARIABLE, Token.MATH_FUNC) for t in current_seq)
+            
+            if has_op and has_operand and len(current_seq) > 1:
+                # Buat satu token gabungan
+                expr_str = ' '.join(t.value for t in current_seq)
+                first = current_seq[0]
+                result.append(Token(expr_str, Token.MATH_EXPR, first.line, first.col))
+            else:
+                # Batal jadikan matematika, masukkan as individual tokens
+                result.extend(current_seq)
+                
+            # Kembalikan trailing tokens yang dibuang
+            result.extend(trailing_tokens)
+            current_seq.clear()
 
-            if len(math_parts) >= 2:
-                # Buat satu token gabungan untuk kalimat matematika
-                expr_str = ' '.join(t.value for t in math_parts)
-                first = math_parts[0]
-                math_token = Token(expr_str, Token.MATH_EXPR, line_num, first.col)
-                # Tambahkan token non-math secara normal, lalu math token
-                added_math = False
-                for t in group:
-                    if t in math_parts:
-                        if not added_math:
-                            result.append(math_token)
-                            added_math = True
-                    else:
-                        result.append(t)
-                continue
-
-        result.extend(group)
+        for t in group:
+            if t.category in (Token.NUMBER, Token.VARIABLE, Token.MATH_FUNC) or \
+               (t.category == Token.SYMBOL and t.value in allowed_symbols):
+                current_seq.append(t)
+            else:
+                flush_seq()
+                result.append(t)
+        
+        flush_seq()
 
     return result
-
-
-# ============================================================
-# Contoh program bawaan
-# ============================================================
 
 SAMPLE_PROGRAMS = {
     "Python": '''\
@@ -322,21 +365,20 @@ public class Calculator {
 }
 
 
-# ============================================================
-# GUI Application
-# ============================================================
+# GUI menggunakan tkinter
 
 class TokenizerApp:
     # Warna untuk kategori token
     COLORS = {
-        Token.RESERVED:   "#e06c75",  # merah muda
-        Token.SYMBOL:     "#d19a66",  # oranye
-        Token.VARIABLE:   "#61afef",  # biru
-        Token.NUMBER:     "#d19a66",  # oranye
-        Token.STRING_LIT: "#98c379",  # hijau
-        Token.MATH_EXPR:  "#c678dd",  # ungu
-        Token.COMMENT:    "#5c6370",  # abu-abu
-        Token.UNKNOWN:    "#e5c07b",  # kuning
+        Token.RESERVED:   "#e06c75", 
+        Token.SYMBOL:     "#d19a66",
+        Token.VARIABLE:   "#61afef",
+        Token.NUMBER:     "#d19a66",
+        Token.STRING_LIT: "#98c379",
+        Token.MATH_EXPR:  "#c678dd",
+        Token.MATH_FUNC:  "#56b6c2",
+        Token.COMMENT:    "#5c6370",
+        Token.UNKNOWN:    "#e5c07b",
     }
 
     def __init__(self, root: tk.Tk):
@@ -379,7 +421,7 @@ class TokenizerApp:
         ttk.Label(header, text="🔍 Tokenizer / Lexical Analyzer",
                   style="Title.TLabel").pack(side=tk.LEFT)
 
-        # ---- Toolbar ----
+        # Toolbar
         toolbar = ttk.Frame(self.root)
         toolbar.pack(fill=tk.X, padx=15, pady=5)
 
@@ -398,7 +440,7 @@ class TokenizerApp:
         ttk.Button(toolbar, text="🗑  Bersihkan",
                    command=self._clear).pack(side=tk.LEFT, padx=2)
 
-        # ---- Panedwindow (input | output) ----
+        # Panedwindow (input | output)
         paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
 
@@ -460,7 +502,7 @@ class TokenizerApp:
 
         paned.add(right_frame, weight=1)
 
-        # ---- Statusbar ----
+        # Statusbar
         self.status_var = tk.StringVar(value="Siap. Masukkan source code atau buka file.")
         status_bar = ttk.Label(self.root, textvariable=self.status_var,
                                font=("Consolas", 9), foreground="#5c6370")
@@ -531,8 +573,8 @@ class TokenizerApp:
         self.summary_text.insert(tk.END, "=" * 50 + "\n\n")
 
         for cat in [Token.RESERVED, Token.SYMBOL, Token.VARIABLE,
-                    Token.NUMBER, Token.STRING_LIT, Token.MATH_EXPR,
-                    Token.COMMENT, Token.UNKNOWN]:
+                    Token.NUMBER, Token.STRING_LIT, Token.MATH_FUNC,
+                    Token.MATH_EXPR, Token.COMMENT, Token.UNKNOWN]:
             if cat in categories:
                 items = categories[cat]
                 unique = sorted(set(items))
@@ -541,11 +583,6 @@ class TokenizerApp:
 
         self.summary_text.configure(state=tk.DISABLED)
         self.status_var.set(f"Analisis selesai — {len(tokens)} token ditemukan.")
-
-
-# ============================================================
-# Main
-# ============================================================
 
 if __name__ == "__main__":
     root = tk.Tk()

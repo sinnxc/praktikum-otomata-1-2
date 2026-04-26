@@ -26,15 +26,14 @@ State diagram:
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 
-# ============================================================
 # FSM Definition
-# ============================================================
 
 STATES = {"S", "A", "B", "C"}
 ALPHABET = {"0", "1"}
 START_STATE = "S"
 ACCEPT_STATES = {"B"}
 
+# Tiap state sesuai dengan gambar yang diberikan di PPT
 TRANSITIONS = {
     ("S", "0"): "A",
     ("S", "1"): "B",
@@ -84,9 +83,7 @@ def run_fsm(input_string: str) -> tuple[bool, list[dict]]:
     return accepted, trace
 
 
-# ============================================================
-# GUI Application
-# ============================================================
+# GUI Application - menggunkana TKInter
 
 class FSMApp:
     # Warna state
@@ -272,16 +269,12 @@ class FSMApp:
         label_color = "#e5c07b"
         label_font = ("Consolas", 10, "bold")
 
-        # ----------------------------------------------------------
         # Helper: titik pada lingkaran di sudut tertentu (derajat)
-        # ----------------------------------------------------------
         def point_on_circle(cx, cy, radius, angle_deg):
             a = math.radians(angle_deg)
             return cx + radius * math.cos(a), cy - radius * math.sin(a)
 
-        # ----------------------------------------------------------
         # Helper: gambar panah lurus antar 2 state
-        # ----------------------------------------------------------
         def draw_straight_arrow(from_s, to_s, label, label_offset=(0, 0)):
             x1, y1 = positions[from_s]
             x2, y2 = positions[to_s]
@@ -300,9 +293,7 @@ class FSMApp:
             self.canvas.create_text(mx, my, text=label,
                                      fill=label_color, font=label_font)
 
-        # ----------------------------------------------------------
         # Helper: gambar panah melengkung antar 2 state
-        # ----------------------------------------------------------
         def draw_curved_arrow(from_s, to_s, label, curve_amount,
                               label_offset=(0, 0)):
             x1, y1 = positions[from_s]
@@ -351,9 +342,7 @@ class FSMApp:
             self.canvas.create_text(lx, ly, text=label,
                                      fill=label_color, font=label_font)
 
-        # ----------------------------------------------------------
         # Helper: gambar self-loop
-        # ----------------------------------------------------------
         def draw_self_loop(state, label, direction="top"):
             x, y = positions[state]
             # direction menentukan ke mana loop keluar
@@ -413,9 +402,7 @@ class FSMApp:
             self.canvas.create_text(x, y + label_dy, text=label,
                                      fill=label_color, font=label_font)
 
-        # ==========================================================
         # Gambar semua transisi (di belakang state circles)
-        # ==========================================================
 
         # S --0--> A  (lurus)
         draw_straight_arrow("S", "A", "0", label_offset=(0, -12))
@@ -438,9 +425,7 @@ class FSMApp:
         # C --0,1--> C  (self-loop atas)
         draw_self_loop("C", "0, 1", direction="top")
 
-        # ==========================================================
         # Gambar state circles (di depan panah)
-        # ==========================================================
         for state, (x, y) in positions.items():
             fill = "#3e4451"
             outline = self.STATE_COLORS.get(state, "#abb2bf")
@@ -598,9 +583,7 @@ class FSMApp:
         self._draw_state_diagram()
 
 
-# ============================================================
-# Batch testing
-# ============================================================
+# Batch testing (test awal untuk memverifikasi keabsahan FSM)
 
 def batch_test():
     """Menjalankan batch test untuk memverifikasi FSM."""
@@ -638,10 +621,6 @@ def batch_test():
     print(f"\nHasil: {passed}/{len(test_cases)} test PASSED")
     print("=" * 60)
 
-
-# ============================================================
-# Main
-# ============================================================
 
 if __name__ == "__main__":
     import sys
