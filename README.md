@@ -1,8 +1,8 @@
 # Praktikum Otomata I dan II
 
-# [!TIP]
-# Make sure you have python atleast 3.10 installed on your system <br>
-# Follow the steps before running the python files on `Prerequisite`
+> [!TIP]
+> Make sure you have python atleast 3.10 installed on your system <br>
+> Follow the steps before running the python files on `Prerequisite`
 
 ### Prerequisite
 1. Python Interpreter installed (atleast 3.10)
